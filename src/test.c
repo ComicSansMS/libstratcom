@@ -11,11 +11,15 @@ int main(void)
 
     dev = stratcom_open_device();
 
-    stratcom_set_button_led_state(dev, STRATCOM_LEDBUTTON_1, STRATCOM_LED_ON);
+    if(!dev) {
+        printf("No suitable device was found :(\n");
+    } else {
+        stratcom_set_button_led_state(dev, STRATCOM_LEDBUTTON_1, STRATCOM_LED_ON);
 
-    stratcom_set_button_led_state(dev, STRATCOM_LEDBUTTON_ALL, STRATCOM_LED_OFF);
+        stratcom_set_button_led_state(dev, STRATCOM_LEDBUTTON_ALL, STRATCOM_LED_OFF);
 
-    stratcom_close_device(dev);
+        stratcom_close_device(dev);
+    }
 
     stratcom_shutdown();
 

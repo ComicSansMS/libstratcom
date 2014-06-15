@@ -64,7 +64,7 @@ struct stratcom_device_ {
     std::uint16_t led_button_state;
     bool led_button_state_has_unflushed_changes;
 
-    stratcom_device(hid_device* dev)
+    stratcom_device_(hid_device* dev)
         :device(dev), led_button_state(0), led_button_state_has_unflushed_changes(true)
     {
     }
