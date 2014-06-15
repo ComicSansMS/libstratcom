@@ -431,11 +431,9 @@ stratcom_input_event* stratcom_create_input_events_from_states(stratcom_input_st
 
 void stratcom_free_input_events(stratcom_input_event* events)
 {
-    if(events) {
-        while(events->next) {
-            auto to_delete = events;
-            events = events->next;
-            delete to_delete;
-        }
+    while(events) {
+        auto to_delete = events;
+        events = events->next;
+        delete to_delete;
     }
 }
