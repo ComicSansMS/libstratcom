@@ -21,3 +21,6 @@ add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/hidapi/hidapi.h COMMAND
 
 add_library(hidapi ${HIDAPI_SOURCE_FILES} ${PROJECT_BINARY_DIR}/hidapi/hidapi.h)
 target_include_directories(hidapi PUBLIC ${PROJECT_BINARY_DIR}/hidapi)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(hidapi PRIVATE -fPIC)
+endif()
