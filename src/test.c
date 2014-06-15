@@ -16,6 +16,8 @@ int main(void)
     } else {
         stratcom_set_button_led_state(dev, STRATCOM_LEDBUTTON_1, STRATCOM_LED_ON);
 
+        stratcom_read_input(dev);
+
         stratcom_set_button_led_state(dev, STRATCOM_LEDBUTTON_ALL, STRATCOM_LED_OFF);
 
         stratcom_close_device(dev);

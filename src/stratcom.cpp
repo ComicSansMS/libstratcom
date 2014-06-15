@@ -59,10 +59,37 @@ public:
 typedef hidapi_resource_wrapper<hid_device, hid_close> hid_device_wrapper;
 typedef hidapi_resource_wrapper<hid_device_info, hid_free_enumeration> hid_device_info_wrapper;
 
+/** Button Word.
+ * A combination of Button_T flags indicating the
+ * state of all buttons. If a bit is set, it means
+ * that the corresponding button is pressed.
+ */
+typedef std::uint16_t BUTTON_WORD;
+/** Axis Word.
+ * Represents the state of an axis. Values range from
+ * -512 to +511 where 0 is the axis center.
+ */
+typedef std::int16_t AXIS_WORD;
+/** State of all buttons and axes on the device.
+ * @note This is a POD struct.
+ */
+struct InputState {
+    BUTTON_WORD           buttons;           ///< Buttons state
+    stratcom_slider_state slider;            ///< Slider state
+    AXIS_WORD             axisX;             ///< X-axis state (-512: full left; 0: center; +511: full right)
+    AXIS_WORD             axisY;             ///< Y-axis state (-512: full up;   0: center; +511: full down)
+    AXIS_WORD             axisZ;             ///< Z-axis state (-512: full left; 0: center; +511: full right)
+    InputState()
+        :buttons(0), slider(STRATCOM_SLIDER_UNKNOWN), axisX(0), axisY(0), axisZ(0)
+    {
+    }
+};
+
 struct stratcom_device_ {
     hid_device_wrapper device;
     std::uint16_t led_button_state;
     bool led_button_state_has_unflushed_changes;
+    InputState input_state;
 
     stratcom_device_(hid_device* dev)
         :device(dev), led_button_state(0), led_button_state_has_unflushed_changes(true)
@@ -74,6 +101,21 @@ struct feature_report {
     std::uint8_t b0;
     std::uint8_t b1;
     std::uint8_t b2;
+};
+
+/** HID Input Report
+ * This is used to query the state of buttons and axes. It consists
+ * of 7 bytes. For detailed description, take a look at QueryInputState()
+ * source in stratcom.cpp
+ */
+struct InputReport {
+    unsigned char b0;                        ///< First Byte of the Report
+    unsigned char b1;                        ///< Second Byte of the Report
+    unsigned char b2;                        ///< Third Byte of the Report
+    unsigned char b3;                        ///< 4th Byte of the Report
+    unsigned char b4;                        ///< 5th Byte of the Report
+    unsigned char b5;                        ///< 6th Byte of the Report
+    unsigned char b6;                        ///< 7th Byte of the Report
 };
 
 void stratcom_init()
@@ -170,5 +212,101 @@ void stratcom_flush_button_led_state(stratcom_device* device)
 int stratcom_led_state_has_unflushed_changes(stratcom_device* device)
 {
     return device->led_button_state_has_unflushed_changes;
+}
+
+void stratcom_set_led_blink_interval(stratcom_device* device, unsigned char on_time, unsigned char off_time)
+{
+    /*
+     * Blinking speed is set by sending a feature request of the following form:
+     * b0 = 0x02
+     * b1 = LED on time
+     * b2 = LED off time
+     * Blinking speed is the same for all LEDs.
+     */
+    feature_report report;
+    report.b0 = 0x02;
+    report.b1 = on_time;
+    report.b2 = off_time;
+    hid_send_feature_report(device->device, &report.b0, sizeof(report));
+}
+
+void evaluateInputReport(InputReport const& input_report, InputState& input_state)
+{
+    if(input_report.b0 != 0x01)
+    {
+        // error
+    }
+
+    /*
+     * Button State:
+     * The button state is contained in the b5 and b6 fields of the report.
+     * We combine those to a BUTTON_WORD as follows:
+     *    0000 6666 5555 5555
+     * Where the upper nibble of b6 contains information on the slider state
+     * and is therefore zeroed out in the BUTTON_WORD.
+     * Applying a mask from the Button_T enum on the BUTTON_WORD gives the
+     * state of that button: 1 if the button is pressed; 0 otherwise
+     */
+    input_state.buttons = (((input_report.b6 & 0x0F) << 8) | input_report.b5);
+    /*
+     * Slider State
+     * The Slider state is stored in the upper 4 bits of b6.
+     * The corresponding bit patterns are:
+     *  SLIDER1 = 0x30,
+     *  SLIDER2 = 0x20,
+     *  SLIDER3 = 0x10
+     */
+    if((input_report.b6 & 0x30) == 0x30) {
+        input_state.slider = STRATCOM_SLIDER_1;
+    } else {
+        input_state.slider = ((input_report.b6 & 0x20) ? STRATCOM_SLIDER_2 : STRATCOM_SLIDER_3);
+    }
+    /*
+     * Axes State
+     * The state of the 3 axes is saved in the b1, b2 and b3 fields.
+     * Each axis takes up 10 bits, allowing values from -512 to +511.
+     * The bit pattern is as follows:
+     *   {--b1---}  {--b2---}  {--b3---}  {--b4---}
+     *   XXXX XXXX  YYYY YYXX  ZZZZ YYYY  00ZZ ZZZZ
+     * Where bits in higher fields are also higher-order bits for the
+     * raw axis data (e.g. X-bits in b2 are high bits for X-data while
+     * Y-bits in b2 are low bits for Y-data).
+     * The upper 2 bits of b4 are unused and should always be 0.
+     *
+     * The raw axis data ranges from -512 to +511 with negative values
+     * encoded in two's complement.
+     */
+    input_state.axisX = ( ((input_report.b2 & 0x03) << 8) | (input_report.b1) );
+    if(input_state.axisX & 0x200) { input_state.axisX = -( (input_state.axisX ^ 0x3FF) + 1); }
+    input_state.axisY = ( ((input_report.b3 & 0x0f) << 6) | ((input_report.b2 & 0xfc) >> 2) );
+    if(input_state.axisY & 0x200) { input_state.axisY = -( (input_state.axisY ^ 0x3FF) + 1); }
+    input_state.axisZ = ( ((input_report.b4 & 0x3f) << 4) | ((input_report.b3 & 0xf0) >> 4) );
+    if(input_state.axisZ & 0x200) { input_state.axisZ = -( (input_state.axisZ ^ 0x3FF) + 1); }
+}
+
+void stratcom_read_input(stratcom_device* device)
+{
+    hid_set_nonblocking(device->device, false);
+    InputReport input_report;
+    int const res = hid_read(device->device, &input_report.b0, sizeof(input_report));
+    if(res == sizeof(input_report)) {
+        evaluateInputReport(input_report, device->input_state);
+    } else {
+        /* error */
+    }
+}
+
+int stratcom_read_input_non_blocking(stratcom_device* device)
+{
+    hid_set_nonblocking(device->device, true);
+    InputReport input_report;
+    int const res = hid_read(device->device, &input_report.b0, sizeof(input_report));
+    if(res == sizeof(input_report)) {
+        evaluateInputReport(input_report, device->input_state);
+        return 1;
+    } else if(res != 0) {
+        /* error */
+    }
+    return 0;
 }
 

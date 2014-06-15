@@ -60,6 +60,7 @@ extern "C" {
     /** Slider State
      */
     typedef enum stratcom_slider_state_ {
+        STRATCOM_SLIDER_UNKNOWN = 0,                /**< Slider position is unknown */
         STRATCOM_SLIDER_1,                          /**< Slider set to the position marked with one circle */
         STRATCOM_SLIDER_2,                          /**< Slider set to the position marked with two circles */
         STRATCOM_SLIDER_3                           /**< Slider set to the position marked with three circles */
@@ -92,6 +93,13 @@ extern "C" {
     LIBSTRATCOM_API void stratcom_flush_button_led_state(stratcom_device* device);
 
     LIBSTRATCOM_API int stratcom_led_state_has_unflushed_changes(stratcom_device* device);
+
+    LIBSTRATCOM_API void stratcom_set_led_blink_interval(stratcom_device* device,
+                                                         unsigned char on_time, unsigned char off_time);
+
+    LIBSTRATCOM_API void stratcom_read_input(stratcom_device* device);
+
+    LIBSTRATCOM_API int stratcom_read_input_non_blocking(stratcom_device* device);
 
 #ifdef __cplusplus
 }
