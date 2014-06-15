@@ -2,6 +2,11 @@
 project(libstratcom)
 cmake_minimum_required(VERSION 3.0)
 
+set(LIBSTRATCOM_VERSION_MAJOR 0)
+set(LIBSTRATCOM_VERSION_MINOR 9)
+set(LIBSTRATCOM_VERSION_PATCH 0)
+set(LIBSTRATCOM_VERSION "${LIBSTRATCOM_VERSION_MAJOR}.${LIBSTRATCOM_VERSION_MINOR}.${LIBSTRATCOM_VERSION_PATCH}")
+
 set(HIDAPI_BINARY_DIR ${PROJECT_BINARY_DIR}/hidapi_build)
 
 find_package(Git REQUIRED)
@@ -55,3 +60,17 @@ target_include_directories(stratcom PUBLIC ${LIBSTRATCOM_INCLUDE_DIR})
 
 add_executable(tester src/test.c)
 target_link_libraries(tester stratcom)
+
+
+find_package(Doxygen)
+if(DOXYGEN_FOUND)
+    set(LIBSTRATCOM_DOC_DIR ${PROJECT_BINARY_DIR}/doc)
+    configure_file(${PROJECT_SOURCE_DIR}/Doxyfile.in ${LIBSTRATCOM_DOC_DIR}/Doxyfile @ONLY)
+    add_custom_target(doxygen-doc
+        COMMAND ${DOXYGEN_EXECUTABLE}
+        WORKING_DIRECTORY ${LIBSTRATCOM_DOC_DIR}
+        COMMENT "Building doxygen documentation"
+        SOURCES ${PROJECT_SOURCE_DIR}/Doxyfile.in
+    )
+    source_group("" FILES ${PROJECT_SOURCE_DIR}/Doxyfile.in)
+endif()
