@@ -27,12 +27,17 @@ set(LIBSTRATCOM_HEADER_FILES
     ${LIBSTRATCOM_INCLUDE_DIR}/stratcom.h
 )
 
-source_group(includes FILES ${LIBSTRATCOM_HEADER_FILES})
+source_group(include FILES ${LIBSTRATCOM_HEADER_FILES})
 
 add_library(libstratcom SHARED ${LIBSTRATCOM_SOURCE_FILES} ${LIBSTRATCOM_HEADER_FILES})
 add_dependencies(libstratcom hidapi)
 target_link_libraries(libstratcom LINK_PRIVATE ${HIDAPI_BINARY_DIR}/$<CONFIG>/libhidapi.lib setupapi.lib)
 target_compile_definitions(libstratcom PRIVATE LIBSTRATCOM_EXPORT)
+if(MSVC)
+    target_compile_options(libstratcom PRIVATE "/W4")
+else()
+    target_compile_options(libstratcom PRIVATE "-pedantic -Wall")
+endif()
 target_include_directories(libstratcom PRIVATE ${HIDAPI_BINARY_DIR}/hidapi)
 target_include_directories(libstratcom PUBLIC ${LIBSTRATCOM_INCLUDE_DIR})
 
