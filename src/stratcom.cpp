@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 namespace {
@@ -59,41 +60,16 @@ public:
 typedef hidapi_resource_wrapper<hid_device, hid_close> hid_device_wrapper;
 typedef hidapi_resource_wrapper<hid_device_info, hid_free_enumeration> hid_device_info_wrapper;
 
-/** Button Word.
- * A combination of Button_T flags indicating the
- * state of all buttons. If a bit is set, it means
- * that the corresponding button is pressed.
- */
-typedef std::uint16_t BUTTON_WORD;
-/** Axis Word.
- * Represents the state of an axis. Values range from
- * -512 to +511 where 0 is the axis center.
- */
-typedef std::int16_t AXIS_WORD;
-/** State of all buttons and axes on the device.
- * @note This is a POD struct.
- */
-struct InputState {
-    BUTTON_WORD           buttons;           ///< Buttons state
-    stratcom_slider_state slider;            ///< Slider state
-    AXIS_WORD             axisX;             ///< X-axis state (-512: full left; 0: center; +511: full right)
-    AXIS_WORD             axisY;             ///< Y-axis state (-512: full up;   0: center; +511: full down)
-    AXIS_WORD             axisZ;             ///< Z-axis state (-512: full left; 0: center; +511: full right)
-    InputState()
-        :buttons(0), slider(STRATCOM_SLIDER_UNKNOWN), axisX(0), axisY(0), axisZ(0)
-    {
-    }
-};
-
 struct stratcom_device_ {
     hid_device_wrapper device;
     std::uint16_t led_button_state;
     bool led_button_state_has_unflushed_changes;
-    InputState input_state;
+    stratcom_input_state input_state;
 
     stratcom_device_(hid_device* dev)
         :device(dev), led_button_state(0), led_button_state_has_unflushed_changes(true)
     {
+        std::memset(&input_state, 0, sizeof(input_state));
     }
 };
 
@@ -156,6 +132,19 @@ stratcom_device* stratcom_open_device_on_path(char const* device_path)
 void stratcom_close_device(stratcom_device* device)
 {
     delete device;
+}
+
+stratcom_led_state stratcom_get_button_led_state(stratcom_device* device,
+                                                 stratcom_button_led led)
+{
+    if((led == STRATCOM_LEDBUTTON_ALL) || (led == STRATCOM_LEDBUTTON_NONE)) {
+        return STRATCOM_LED_OFF;
+    } else if((device->led_button_state & led) != 0) {
+        return STRATCOM_LED_ON;
+    } else if((device->led_button_state & (led << 1) ) != 0) {
+        return STRATCOM_LED_BLINK;
+    }
+    return STRATCOM_LED_OFF;
 }
 
 void stratcom_set_button_led_state(stratcom_device* device,
@@ -230,7 +219,7 @@ void stratcom_set_led_blink_interval(stratcom_device* device, unsigned char on_t
     hid_send_feature_report(device->device, &report.b0, sizeof(report));
 }
 
-void evaluateInputReport(InputReport const& input_report, InputState& input_state)
+void evaluateInputReport(InputReport const& input_report, stratcom_input_state& input_state)
 {
     if(input_report.b0 != 0x01)
     {
@@ -296,6 +285,20 @@ void stratcom_read_input(stratcom_device* device)
     }
 }
 
+int stratcom_read_input_with_timeout(stratcom_device* device, int timeout_milliseconds)
+{
+    hid_set_nonblocking(device->device, false);
+    InputReport input_report;
+    int const res = hid_read_timeout(device->device, &input_report.b0, sizeof(input_report), timeout_milliseconds);
+    if(res == sizeof(input_report)) {
+        evaluateInputReport(input_report, device->input_state);
+        return 1;
+    } else if(res != 0) {
+        /* error */
+    }
+    return 0;
+}
+
 int stratcom_read_input_non_blocking(stratcom_device* device)
 {
     hid_set_nonblocking(device->device, true);
@@ -310,3 +313,129 @@ int stratcom_read_input_non_blocking(stratcom_device* device)
     return 0;
 }
 
+stratcom_button_led stratcom_get_led_for_button(stratcom_button button)
+{
+    switch(button) {
+    case STRATCOM_BUTTON_1: return STRATCOM_LEDBUTTON_1;
+    case STRATCOM_BUTTON_2: return STRATCOM_LEDBUTTON_2;
+    case STRATCOM_BUTTON_3: return STRATCOM_LEDBUTTON_3;
+    case STRATCOM_BUTTON_4: return STRATCOM_LEDBUTTON_4;
+    case STRATCOM_BUTTON_5: return STRATCOM_LEDBUTTON_5;
+    case STRATCOM_BUTTON_6: return STRATCOM_LEDBUTTON_6;
+    case STRATCOM_BUTTON_REC:  return STRATCOM_LEDBUTTON_REC;
+    default: break;
+    }
+    return STRATCOM_LEDBUTTON_NONE;
+}
+
+stratcom_input_state stratcom_get_input_state(stratcom_device* device)
+{
+    return device->input_state;
+}
+
+int stratcom_is_button_pressed(stratcom_device* device, stratcom_button button)
+{
+    return (device->input_state.buttons & button);
+}
+
+stratcom_axis_word stratcom_get_axis_value(stratcom_device* device, stratcom_axis axis)
+{
+    switch(axis) {
+    case STRATCOM_AXIS_X: return device->input_state.axisX;
+    case STRATCOM_AXIS_Y: return device->input_state.axisY;
+    case STRATCOM_AXIS_Z: return device->input_state.axisZ;
+    default: break;
+    }
+    return 0;
+}
+
+stratcom_slider_state stratcom_get_slider_state(stratcom_device* device)
+{
+    return device->input_state.slider;
+}
+
+stratcom_button stratcom_iterate_buttons_range_begin()
+{
+    return STRATCOM_BUTTON_1;
+}
+
+stratcom_button stratcom_iterate_buttons_range_end()
+{
+    return STRATCOM_BUTTON_NONE;
+}
+
+stratcom_button stratcom_iterate_buttons_range_increment(stratcom_button button)
+{
+    switch(button) {
+    case STRATCOM_BUTTON_1:      return STRATCOM_BUTTON_2;
+    case STRATCOM_BUTTON_2:      return STRATCOM_BUTTON_3;
+    case STRATCOM_BUTTON_3:      return STRATCOM_BUTTON_4;
+    case STRATCOM_BUTTON_4:      return STRATCOM_BUTTON_5;
+    case STRATCOM_BUTTON_5:      return STRATCOM_BUTTON_6;
+    case STRATCOM_BUTTON_6:      return STRATCOM_BUTTON_PLUS;
+    case STRATCOM_BUTTON_PLUS:   return STRATCOM_BUTTON_MINUS;
+    case STRATCOM_BUTTON_MINUS:  return STRATCOM_BUTTON_SHIFT1;
+    case STRATCOM_BUTTON_SHIFT1: return STRATCOM_BUTTON_SHIFT2;
+    case STRATCOM_BUTTON_SHIFT2: return STRATCOM_BUTTON_SHIFT3;
+    case STRATCOM_BUTTON_SHIFT3: return STRATCOM_BUTTON_REC;
+    case STRATCOM_BUTTON_REC:    return STRATCOM_BUTTON_NONE;
+    default: break;
+    }
+    return STRATCOM_BUTTON_NONE;
+}
+
+stratcom_input_event* stratcom_create_input_events_from_states(stratcom_input_state* old_state,
+                                                               stratcom_input_state* new_state)
+{
+    stratcom_input_event* ret = nullptr;
+
+    if(old_state->slider != new_state->slider) {
+        auto ev = new stratcom_input_event;
+        ev->type = STRATCOM_INPUT_EVENT_SLIDER;
+        ev->desc.slider.status = new_state->slider;
+        ev->next = ret;
+        ret = ev;
+    }
+
+    auto evaluate_axis_states = [&ret](stratcom_axis_word old_val, stratcom_axis_word new_val, stratcom_axis axis) {
+        if(old_val != new_val) {
+            auto ev = new stratcom_input_event;
+            ev->type = STRATCOM_INPUT_EVENT_AXIS;
+            ev->desc.axis.axis = axis;
+            ev->desc.axis.status = new_val;
+            ev->next = ret;
+            ret = ev;
+        }
+    };
+    evaluate_axis_states(old_state->axisX, new_state->axisX, STRATCOM_AXIS_X);
+    evaluate_axis_states(old_state->axisY, new_state->axisY, STRATCOM_AXIS_Y);
+    evaluate_axis_states(old_state->axisZ, new_state->axisZ, STRATCOM_AXIS_Z);
+
+    if(old_state->buttons != new_state->buttons) {
+        for(auto b = stratcom_iterate_buttons_range_begin(); b != stratcom_iterate_buttons_range_end();
+            b = stratcom_iterate_buttons_range_increment(b))
+        {
+            if((old_state->buttons & b) != (new_state->buttons & b)) {
+                auto ev = new stratcom_input_event;
+                ev->type = STRATCOM_INPUT_EVENT_BUTTON;
+                ev->desc.button.button = b;
+                ev->desc.button.status = ((new_state->buttons & b) == 0) ? 0 : 1;
+                ev->next = ret;
+                ret = ev;
+            }
+        }
+    }
+
+    return ret;
+}
+
+void stratcom_free_input_events(stratcom_input_event* events)
+{
+    if(events) {
+        while(events->next) {
+            auto to_delete = events;
+            events = events->next;
+            delete to_delete;
+        }
+    }
+}
