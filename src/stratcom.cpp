@@ -63,6 +63,10 @@ typedef hidapi_resource_wrapper<hid_device_info, hid_free_enumeration> hid_devic
 struct stratcom_device_ {
     hid_device_wrapper device;
     std::uint16_t led_button_state;
+    struct blink_state_T {
+        std::uint8_t on_time;
+        std::uint8_t off_time;
+    } blink_state;
     bool led_button_state_has_unflushed_changes;
     stratcom_input_state input_state;
 
@@ -70,6 +74,8 @@ struct stratcom_device_ {
         :device(dev), led_button_state(0), led_button_state_has_unflushed_changes(true)
     {
         std::memset(&input_state, 0, sizeof(input_state));
+        blink_state.on_time = 0;
+        blink_state.off_time = 0;
     }
 };
 
@@ -124,7 +130,10 @@ stratcom_device* stratcom_open_device_on_path(char const* device_path)
 {
     auto dev = hid_open_path(device_path);
     if (dev) {
-        return new stratcom_device(dev);
+        auto ret = new stratcom_device(dev);
+        stratcom_read_button_led_state(ret);
+        stratcom_read_led_blink_intervals(ret);
+        return ret;
     }
     return nullptr;
 }
@@ -219,6 +228,47 @@ void stratcom_set_led_blink_interval(stratcom_device* device, unsigned char on_t
     hid_send_feature_report(device->device, &report.b0, sizeof(report));
 }
 
+void stratcom_read_button_led_state(stratcom_device* device)
+{
+    feature_report rep;
+    rep.b0 = 0x01;
+    int res = hid_get_feature_report(device->device, reinterpret_cast<unsigned char*>(&rep), sizeof(feature_report));
+    if(res != 3) {
+        /* error */
+    }
+    device->led_button_state = static_cast<std::uint16_t>(rep.b1) |
+                               (static_cast<std::uint16_t>(rep.b2) << 8);
+    device->led_button_state_has_unflushed_changes = false;
+}
+
+void stratcom_read_led_blink_intervals(stratcom_device* device)
+{
+    feature_report rep;
+    rep.b0 = 0x02;
+    int res = hid_get_feature_report(device->device, reinterpret_cast<unsigned char*>(&rep), sizeof(feature_report));
+    if(res != 3) {
+        /* error */
+    }
+    device->blink_state.on_time = rep.b1;
+    device->blink_state.off_time = rep.b2;
+}
+
+stratcom_button_led stratcom_get_led_for_button(stratcom_button button)
+{
+    switch(button) {
+    case STRATCOM_BUTTON_1: return STRATCOM_LEDBUTTON_1;
+    case STRATCOM_BUTTON_2: return STRATCOM_LEDBUTTON_2;
+    case STRATCOM_BUTTON_3: return STRATCOM_LEDBUTTON_3;
+    case STRATCOM_BUTTON_4: return STRATCOM_LEDBUTTON_4;
+    case STRATCOM_BUTTON_5: return STRATCOM_LEDBUTTON_5;
+    case STRATCOM_BUTTON_6: return STRATCOM_LEDBUTTON_6;
+    case STRATCOM_BUTTON_REC:  return STRATCOM_LEDBUTTON_REC;
+    default: break;
+    }
+    return STRATCOM_LEDBUTTON_NONE;
+}
+
+
 void evaluateInputReport(InputReport const& input_report, stratcom_input_state& input_state)
 {
     if(input_report.b0 != 0x01)
@@ -311,21 +361,6 @@ int stratcom_read_input_non_blocking(stratcom_device* device)
         /* error */
     }
     return 0;
-}
-
-stratcom_button_led stratcom_get_led_for_button(stratcom_button button)
-{
-    switch(button) {
-    case STRATCOM_BUTTON_1: return STRATCOM_LEDBUTTON_1;
-    case STRATCOM_BUTTON_2: return STRATCOM_LEDBUTTON_2;
-    case STRATCOM_BUTTON_3: return STRATCOM_LEDBUTTON_3;
-    case STRATCOM_BUTTON_4: return STRATCOM_LEDBUTTON_4;
-    case STRATCOM_BUTTON_5: return STRATCOM_LEDBUTTON_5;
-    case STRATCOM_BUTTON_6: return STRATCOM_LEDBUTTON_6;
-    case STRATCOM_BUTTON_REC:  return STRATCOM_LEDBUTTON_REC;
-    default: break;
-    }
-    return STRATCOM_LEDBUTTON_NONE;
 }
 
 stratcom_input_state stratcom_get_input_state(stratcom_device* device)
