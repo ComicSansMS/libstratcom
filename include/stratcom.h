@@ -49,7 +49,7 @@ extern "C" {
 
     struct stratcom_device_;
     /** Opaque device structure.
-     * Maintains internal state for interacting with the device.
+     * Maintains the internal state for interacting with the device.
      */
     typedef struct stratcom_device_ stratcom_device;
 
@@ -61,8 +61,9 @@ extern "C" {
 
     /** Button Identifiers.
      * This type is used for querying the state of a button.
-     * Iterating over all button identifiers can be achieved with the @todo functions.
-     * @see stratcom_is_button_pressed()
+     * Iterating over all button identifiers can be achieved with the stratcom_iterate_buttons_range* functions.
+     * @see stratcom_is_button_pressed(), stratcom_iterate_buttons_range_begin(),
+     *      stratcom_iterate_buttons_range_end(), stratcom_iterate_buttons_range_increment()
      */
     typedef enum stratcom_button_ {
         STRATCOM_BUTTON_1      = 0x0001,            /**< The button labeled '1' */
@@ -225,6 +226,15 @@ extern "C" {
 
     /** @} */
 
+    /** Return type.
+     * This return type is used on functions that can fail to indicate runtime errors.
+     */
+    typedef enum stratcom_return_ {
+        STRATCOM_RET_SUCCESS = 0,                /**< The function completed successfully. */
+        STRATCOM_RET_ERROR   = (-1),             /**< An error occured while executing. */
+        STRATCOM_RET_TIMEOUT = (-2)              /**< Timed out while waiting for input from the device. */
+    } stratcom_return;
+
     /** @name Initialization and Shutdown.
      * @{
      */
@@ -232,9 +242,10 @@ extern "C" {
     /** Initialize the libstratcom library.
      * Call this function once per process before invoking any other function of the library.
      * Call stratcom_shutdown() before exiting your program to free the static data allocated by this function.
+     * @returns STRATCOM_RET_SUCCESS on success, STRATCOM_RET_ERROR on error.
      * @see stratcom_shutdown()
      */
-    LIBSTRATCOM_API void stratcom_init();
+    LIBSTRATCOM_API stratcom_return stratcom_init();
 
     /** Finalize the libstratcom library.
      * This function frees all static data allocated by stratcom_init().
@@ -251,6 +262,9 @@ extern "C" {
      *         NULL in case of error.
      * @note The Strategic Commander is identified as the first device with an HID Vendor Id of \c 0x045e and
      *       a Product Id of \c 0x0033.
+     * @note The internal state of the LEDs and LED blink intervals are set to match the state of the physical device.
+     *       The input state however is left uninitialized and must be queried manually by calling one of the
+     *       \c stratcom_read_input* functions.
      * @see stratcom_open_device_on_path(), stratcom_close_device()
      */
     LIBSTRATCOM_API stratcom_device* stratcom_open_device();
@@ -259,6 +273,9 @@ extern "C" {
      * @param[in] device_path The HID path of the device to open.
      * @return Pointer to a device struct on success, which can be freed by calling stratcom_close_device().
      *         NULL in case of error.
+     * @note The internal state of the LEDs and LED blink intervals are set to match the state of the physical device.
+     *       The input state however is left uninitialized and must be queried manually by calling one of the
+     *       \c stratcom_read_input* functions.
      * @see stratcom_close_device()
      */
     LIBSTRATCOM_API stratcom_device* stratcom_open_device_on_path(char const* device_path);
@@ -279,30 +296,106 @@ extern "C" {
      * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
      * @param[in] led The button LED which is to be queried.
      * @return State of the queried LED.
+     * @note The state returned by this function represents the internal state of the stratcom_device object,
+     * which might diverge from the actual state of the physical device (for example after setting the led state
+     * without flushing the changes to the device). To force the internal state to synchronize with the physical
+     * device, call either stratcom_flush_button_led_state() or stratcom_read_button_led_state().
+     * @see stratcom_set_button_led_state()
      */
     LIBSTRATCOM_API stratcom_led_state stratcom_get_button_led_state(stratcom_device* device,
                                                                      stratcom_button_led led);
 
     /** Set the state of a specific LED.
+     * This function changes the state of an LED in both the internal state and flushes the internal state to
+     * the physical device. This will result in sending a feature report to the device.
+     * When setting multiple LEDs at once, consider using stratcom_set_button_led_state_without_flushing()
+     * and stratcom_flush_button_led_state() instead, to avoid having to send multiple feature reports in a row.
+     * Note though, that setting STRATCOM_LEDBUTTON_ALL with this function will also only send a single feature report.
+     * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
+     * @param[in] led The button LED which is to be changed.
+     * @param[in] state Requested new state of the LED.
+     * @return STRATCOM_RET_SUCCESS on success, STRATCOM_RET_ERROR on error.
+     * @see stratcom_set_button_led_state_without_flushing(), stratcom_flush_button_led_state(),
+     *      stratcom_get_button_led_state()
      */
-    LIBSTRATCOM_API void stratcom_set_button_led_state(stratcom_device* device,
-                                                       stratcom_button_led led, stratcom_led_state state);
+    LIBSTRATCOM_API stratcom_return stratcom_set_button_led_state(stratcom_device* device,
+                                                                  stratcom_button_led led, stratcom_led_state state);
 
+    /** Set the state of a specific LED in the internal state.
+     * This function changes the state of an LED in the internal state only. To apply the change made by this
+     * function to the physical device you have to flush the changes by calling either stratcom_flush_button_led_state()
+     * or stratcom_set_button_led_state().
+     * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
+     * @param[in] led The button LED which is to be changed.
+     * @param[in] state Requested new state of the LED.
+     * @see stratcom_set_button_led_state(), stratcom_flush_button_led_state(),
+     *      stratcom_led_state_has_unflushed_changes(), stratcom_get_button_led_state()
+     */
     LIBSTRATCOM_API void stratcom_set_button_led_state_without_flushing(stratcom_device* device,
                                                                         stratcom_button_led led,
                                                                         stratcom_led_state state);
 
-    LIBSTRATCOM_API void stratcom_flush_button_led_state(stratcom_device* device);
+    /** Flush the current internal LED state to the physical device.
+     * This will send a feature report to the device to update the state of the button LEDs.
+     * In case of successful execution, all button LEDs will light up according to the internal state.
+     * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
+     * @return STRATCOM_RET_SUCCESS on success, STRATCOM_RET_ERROR on error.
+     * @see stratcom_set_button_led_state_without_flushing(), stratcom_led_state_has_unflushed_changes()
+     */
+    LIBSTRATCOM_API stratcom_return stratcom_flush_button_led_state(stratcom_device* device);
 
+    /** Check whether the internal LED state contains unflushed changes.
+     * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
+     * @return 1 if the internal state contains unflushed changes, 0 otherwise.
+     * @note This function does not query the physical device for its state. It simply accounts for changes made
+     *       through stratcom_set_button_led_state_without_flushing() that have not been flushed.
+     * @see stratcom_set_button_led_state_without_flushing(), stratcom_flush_button_led_state()
+     */
     LIBSTRATCOM_API int stratcom_led_state_has_unflushed_changes(stratcom_device* device);
 
-    LIBSTRATCOM_API void stratcom_set_led_blink_interval(stratcom_device* device,
-                                                         unsigned char on_time, unsigned char off_time);
+    /** Retrieve the current blink intervals from the internal state.
+     * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
+     * @param[out] out_on_time Time that the LED is lit when blinking.
+     * @param[out] out_off_time Time that the LED is dark when blinking.
+     * @see stratcom_set_led_blink_interval(), stratcom_read_led_blink_intervals()
+     */
+    LIBSTRATCOM_API void stratcom_get_led_blink_interval(stratcom_device* device,
+                                                         unsigned char* out_on_time, unsigned char* out_off_time);
 
-    LIBSTRATCOM_API void stratcom_read_button_led_state(stratcom_device* device);
+    /** Set the blink intervals for blinking LEDs.
+     * This function will send a feature report to update the blink state on the physical device.
+     * The blink intervals are the same for all buttons.
+     * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
+     * @param[in] on_time Time that the LED is lit when blinking.
+     * @param[in] off_time Time that the LED is dark when blinking.
+     * @return STRATCOM_RET_SUCCESS on success, STRATCOM_RET_ERROR on error.
+     * @see stratcom_get_led_blink_interval(), stratcom_read_led_blink_intervals()
+     */
+    LIBSTRATCOM_API stratcom_return stratcom_set_led_blink_interval(stratcom_device* device,
+                                                                    unsigned char on_time, unsigned char off_time);
 
-    LIBSTRATCOM_API void stratcom_read_led_blink_intervals(stratcom_device* device);
+    /** Read the button led state from the physical device.
+     * Upon successful execution, this function will overwrite the internal led state with the values
+     * obtained from the physical device. This function will cause a feature report to be read from the device.
+     * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
+     * @return STRATCOM_RET_SUCCESS on success, STRATCOM_RET_ERROR on error.
+     * @see stratcom_get_button_led_state()
+     */
+    LIBSTRATCOM_API stratcom_return stratcom_read_button_led_state(stratcom_device* device);
 
+    /** Read the led blink intervals from the physical device.
+     * Upon successful execution, this function will overwrite the internal state blink intervals with the values
+     * obtained from the physical device. This function will cause a feature report to be read from the device.
+     * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
+     * @return STRATCOM_RET_SUCCESS on success, STRATCOM_RET_ERROR on error.
+     * @see stratcom_get_button_led_state()
+     */
+    LIBSTRATCOM_API stratcom_return stratcom_read_led_blink_intervals(stratcom_device* device);
+
+    /** Obtain the matching LED for a given button.
+     * @param[in] button Button of which to retrieve the LED.
+     * @return The corresponding LED of the button. STRATCOM_LEDBUTTON_NONE if the button does not have a LED.
+     */
     LIBSTRATCOM_API stratcom_button_led stratcom_get_led_for_button(stratcom_button button);
 
     /** @} */
@@ -311,11 +404,11 @@ extern "C" {
      * @{
      */
 
-    LIBSTRATCOM_API void stratcom_read_input(stratcom_device* device);
+    LIBSTRATCOM_API stratcom_return stratcom_read_input(stratcom_device* device);
 
-    LIBSTRATCOM_API int stratcom_read_input_with_timeout(stratcom_device* device, int timeout_milliseconds);
+    LIBSTRATCOM_API stratcom_return stratcom_read_input_with_timeout(stratcom_device* device, int timeout_milliseconds);
 
-    LIBSTRATCOM_API int stratcom_read_input_non_blocking(stratcom_device* device);
+    LIBSTRATCOM_API stratcom_return stratcom_read_input_non_blocking(stratcom_device* device);
 
     LIBSTRATCOM_API stratcom_input_state stratcom_get_input_state(stratcom_device* device);
 

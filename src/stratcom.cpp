@@ -13,62 +13,97 @@ namespace {
     const unsigned short HID_VENDOR_ID  = 0x045e;
     const unsigned short HID_PRODUCT_ID = 0x0033;
     /***/
+
+    /** Generic RAII wrapper for hidapi resource handles.
+     * @tparam T Type that is being wrapped.
+     * @tparam Deleter Deleter function invoked on the guarded resource when the wrapper is destroyed.
+     */
+    template<typename T, void(*Deleter)(T*)>
+    class hidapi_resource_wrapper
+    {
+    private:
+        std::unique_ptr<T, void(*)(T*)> m_ptr;
+    public:
+        hidapi_resource_wrapper()
+            :m_ptr(nullptr, [](T*) {})
+        {
+        }
+
+        hidapi_resource_wrapper(T* dev)
+            :m_ptr(dev, Deleter)
+        {
+        }
+
+        operator T*()
+        {
+            return m_ptr.get();
+        }
+
+        operator T const*() const
+        {
+            return m_ptr.get();
+        }
+
+        T* operator->()
+        {
+            return m_ptr.get();
+        }
+
+        T const* operator->() const
+        {
+            return m_ptr.get();
+        }
+
+        bool operator!() const
+        {
+            return !m_ptr;
+        }
+    };
+
+    /** Wrapped hidapi types.
+     */
+    typedef hidapi_resource_wrapper<hid_device, hid_close> hid_device_wrapper;
+    typedef hidapi_resource_wrapper<hid_device_info, hid_free_enumeration> hid_device_info_wrapper;
+
+    /** HID feature reports.
+     * This is used to set and query the state of the device LEDs.
+     * For a detailed description, take a look at the
+     * stratcom_flush_button_led_state() and
+     * stratcom_set_led_blink_interval() functions.
+     */
+    struct feature_report {
+        std::uint8_t b0;
+        std::uint8_t b1;
+        std::uint8_t b2;
+    };
+
+    /** HID Input Report.
+     * This is used to query the state of buttons and axes. It consists
+     * of 7 bytes. For detailed description, take a look at the
+     * evaluateInputReport() function.
+     */
+    struct input_report {
+        std::uint8_t b0;
+        std::uint8_t b1;
+        std::uint8_t b2;
+        std::uint8_t b3;
+        std::uint8_t b4;
+        std::uint8_t b5;
+        std::uint8_t b6;
+    };
 }
 
-template<typename T, void(*Deleter)(T*)>
-class hidapi_resource_wrapper
-{
-private:
-    std::unique_ptr<T, void(*)(T*)> m_ptr;
-public:
-    hidapi_resource_wrapper()
-        :m_ptr(nullptr, [](T*) {})
-    {
-    }
-
-    hidapi_resource_wrapper(T* dev)
-        :m_ptr(dev, Deleter)
-    {
-    }
-
-    operator T*()
-    {
-        return m_ptr.get();
-    }
-
-    operator T const*() const
-    {
-        return m_ptr.get();
-    }
-
-    T* operator->()
-    {
-        return m_ptr.get();
-    }
-
-    T const* operator->() const
-    {
-        return m_ptr.get();
-    }
-
-    bool operator!() const
-    {
-        return !m_ptr;
-    }
-};
-
-typedef hidapi_resource_wrapper<hid_device, hid_close> hid_device_wrapper;
-typedef hidapi_resource_wrapper<hid_device_info, hid_free_enumeration> hid_device_info_wrapper;
-
+/** \internal Definition of the opaque stratcom_device_ struct.
+ */
 struct stratcom_device_ {
-    hid_device_wrapper device;
-    std::uint16_t led_button_state;
+    hid_device_wrapper device;                          ///< underlying hidapi device.
+    std::uint16_t led_button_state;                     ///< cached state of the device leds.
     struct blink_state_T {
         std::uint8_t on_time;
         std::uint8_t off_time;
-    } blink_state;
-    bool led_button_state_has_unflushed_changes;
-    stratcom_input_state input_state;
+    } blink_state;                                      ///< cached state of the device led blink state.
+    bool led_button_state_has_unflushed_changes;        ///< true if the cached led state has unflushed changes.
+    stratcom_input_state input_state;                   ///< device input state obtained by read_input* functions.
 
     stratcom_device_(hid_device* dev)
         :device(dev), led_button_state(0), led_button_state_has_unflushed_changes(true)
@@ -79,41 +114,15 @@ struct stratcom_device_ {
     }
 };
 
-struct feature_report {
-    std::uint8_t b0;
-    std::uint8_t b1;
-    std::uint8_t b2;
-};
 
-/** HID Input Report
- * This is used to query the state of buttons and axes. It consists
- * of 7 bytes. For detailed description, take a look at QueryInputState()
- * source in stratcom.cpp
- */
-struct InputReport {
-    unsigned char b0;                        ///< First Byte of the Report
-    unsigned char b1;                        ///< Second Byte of the Report
-    unsigned char b2;                        ///< Third Byte of the Report
-    unsigned char b3;                        ///< 4th Byte of the Report
-    unsigned char b4;                        ///< 5th Byte of the Report
-    unsigned char b5;                        ///< 6th Byte of the Report
-    unsigned char b6;                        ///< 7th Byte of the Report
-};
-
-void stratcom_init()
+stratcom_return stratcom_init()
 {
-    if(hid_init() != 0)
-    {
-        // error
-    }
+    return (hid_init() == 0) ? STRATCOM_RET_SUCCESS : STRATCOM_RET_ERROR;
 }
 
 void stratcom_shutdown()
 {
-    if(hid_exit() != 0)
-    {
-        // error
-    }
+    hid_exit();
 }
 
 stratcom_device* stratcom_open_device()
@@ -156,29 +165,17 @@ stratcom_led_state stratcom_get_button_led_state(stratcom_device* device,
     return STRATCOM_LED_OFF;
 }
 
-void stratcom_set_button_led_state(stratcom_device* device,
+stratcom_return stratcom_set_button_led_state(stratcom_device* device,
                                    stratcom_button_led led, stratcom_led_state state)
 {
     stratcom_set_button_led_state_without_flushing(device, led, state);
-    stratcom_flush_button_led_state(device);
+    return stratcom_flush_button_led_state(device);
 }
 
 void stratcom_set_button_led_state_without_flushing(stratcom_device* device,
                                                     stratcom_button_led led,
                                                     stratcom_led_state state)
 {
-    /*
-     * LEDs are set by sending a feature report of the following form:
-     * b0 = 0x01
-     * b1 = LED state Buttons 1-4
-     * b1 = LED state Buttons 1-6
-     * Each button occupies two bits: A low bit that indicates a lit LED and a higher bit indicating
-     * a blinking LED. Those are mutually exclusive, attempting to set both will result in the 
-     * feature report being rejected.
-     * Therefore, the class keeps track of LED states in the led_button_state member which mimics the
-     * bitmask send to the device.
-     * Values of the ButtonLed_T correspond to the bitmasks for LED On bits in led_button_state.
-     */
     auto const button_mask = static_cast<std::uint16_t>(led);
     switch(state) {
     case STRATCOM_LED_BLINK:
@@ -197,14 +194,29 @@ void stratcom_set_button_led_state_without_flushing(stratcom_device* device,
     device->led_button_state_has_unflushed_changes = true;
 }
 
-void stratcom_flush_button_led_state(stratcom_device* device)
+stratcom_return stratcom_flush_button_led_state(stratcom_device* device)
 {
+    /** \internal
+     * LEDs are set by sending a feature report of the following form:
+     * b0 = 0x01
+     * b1 = LED state Buttons 1-4
+     * b1 = LED state Buttons 1-6
+     * Each button occupies two bits: A low bit that indicates a lit LED and a higher bit indicating
+     * a blinking LED. Those are mutually exclusive, attempting to set both will result in the 
+     * feature report being rejected.
+     * Therefore, the stratcom_device keeps track of LED states in the led_button_state member which mimics the
+     * bitmask send to the device.
+     * Values of the stratcom_button_led enum correspond to the bitmasks for LED On bits in led_button_state.
+     */
     feature_report report;
     report.b0 = 0x01;
     report.b1 = (device->led_button_state & 0xff);
     report.b2 = ((device->led_button_state >> 8) & 0xff);
-    hid_send_feature_report(device->device, &report.b0, sizeof(report));
+    if(hid_send_feature_report(device->device, &report.b0, sizeof(report)) != sizeof(report)) {
+        return STRATCOM_RET_ERROR;
+    }
     device->led_button_state_has_unflushed_changes = false;
+    return STRATCOM_RET_SUCCESS;
 }
 
 int stratcom_led_state_has_unflushed_changes(stratcom_device* device)
@@ -212,9 +224,16 @@ int stratcom_led_state_has_unflushed_changes(stratcom_device* device)
     return device->led_button_state_has_unflushed_changes;
 }
 
-void stratcom_set_led_blink_interval(stratcom_device* device, unsigned char on_time, unsigned char off_time)
+void stratcom_get_led_blink_interval(stratcom_device* device,
+                                     unsigned char* out_on_time, unsigned char* out_off_time)
 {
-    /*
+    *out_on_time = device->blink_state.on_time;
+    *out_off_time = device->blink_state.off_time;
+}
+
+stratcom_return stratcom_set_led_blink_interval(stratcom_device* device, unsigned char on_time, unsigned char off_time)
+{
+    /** \internal
      * Blinking speed is set by sending a feature request of the following form:
      * b0 = 0x02
      * b1 = LED on time
@@ -225,32 +244,37 @@ void stratcom_set_led_blink_interval(stratcom_device* device, unsigned char on_t
     report.b0 = 0x02;
     report.b1 = on_time;
     report.b2 = off_time;
-    hid_send_feature_report(device->device, &report.b0, sizeof(report));
+    if(hid_send_feature_report(device->device, &report.b0, sizeof(report)) != sizeof(report)) {
+        return STRATCOM_RET_ERROR;
+    }
+    return STRATCOM_RET_SUCCESS;
 }
 
-void stratcom_read_button_led_state(stratcom_device* device)
+stratcom_return stratcom_read_button_led_state(stratcom_device* device)
 {
     feature_report rep;
     rep.b0 = 0x01;
-    int res = hid_get_feature_report(device->device, reinterpret_cast<unsigned char*>(&rep), sizeof(feature_report));
-    if(res != 3) {
-        /* error */
+    int const res = hid_get_feature_report(device->device, reinterpret_cast<unsigned char*>(&rep), sizeof(rep));
+    if(res != sizeof(rep)) {
+        return STRATCOM_RET_ERROR;
     }
     device->led_button_state = static_cast<std::uint16_t>(rep.b1) |
                                (static_cast<std::uint16_t>(rep.b2) << 8);
     device->led_button_state_has_unflushed_changes = false;
+    return STRATCOM_RET_SUCCESS;
 }
 
-void stratcom_read_led_blink_intervals(stratcom_device* device)
+stratcom_return stratcom_read_led_blink_intervals(stratcom_device* device)
 {
     feature_report rep;
     rep.b0 = 0x02;
-    int res = hid_get_feature_report(device->device, reinterpret_cast<unsigned char*>(&rep), sizeof(feature_report));
-    if(res != 3) {
-        /* error */
+    int const res = hid_get_feature_report(device->device, reinterpret_cast<unsigned char*>(&rep), sizeof(rep));
+    if(res != sizeof(rep)) {
+        return STRATCOM_RET_ERROR;
     }
     device->blink_state.on_time = rep.b1;
     device->blink_state.off_time = rep.b2;
+    return STRATCOM_RET_SUCCESS;
 }
 
 stratcom_button_led stratcom_get_led_for_button(stratcom_button button)
@@ -268,99 +292,102 @@ stratcom_button_led stratcom_get_led_for_button(stratcom_button button)
     return STRATCOM_LEDBUTTON_NONE;
 }
 
-
-void evaluateInputReport(InputReport const& input_report, stratcom_input_state& input_state)
-{
-    if(input_report.b0 != 0x01)
+namespace {
+    stratcom_return evaluateInputReport(input_report const& report, stratcom_input_state& input_state)
     {
-        // error
-    }
+        if(report.b0 != 0x01)
+        {
+            return STRATCOM_RET_ERROR;
+        }
 
-    /*
-     * Button State:
-     * The button state is contained in the b5 and b6 fields of the report.
-     * We combine those to a BUTTON_WORD as follows:
-     *    0000 6666 5555 5555
-     * Where the upper nibble of b6 contains information on the slider state
-     * and is therefore zeroed out in the BUTTON_WORD.
-     * Applying a mask from the Button_T enum on the BUTTON_WORD gives the
-     * state of that button: 1 if the button is pressed; 0 otherwise
-     */
-    input_state.buttons = (((input_report.b6 & 0x0F) << 8) | input_report.b5);
-    /*
-     * Slider State
-     * The Slider state is stored in the upper 4 bits of b6.
-     * The corresponding bit patterns are:
-     *  SLIDER1 = 0x30,
-     *  SLIDER2 = 0x20,
-     *  SLIDER3 = 0x10
-     */
-    if((input_report.b6 & 0x30) == 0x30) {
-        input_state.slider = STRATCOM_SLIDER_1;
-    } else {
-        input_state.slider = ((input_report.b6 & 0x20) ? STRATCOM_SLIDER_2 : STRATCOM_SLIDER_3);
-    }
-    /*
-     * Axes State
-     * The state of the 3 axes is saved in the b1, b2 and b3 fields.
-     * Each axis takes up 10 bits, allowing values from -512 to +511.
-     * The bit pattern is as follows:
-     *   {--b1---}  {--b2---}  {--b3---}  {--b4---}
-     *   XXXX XXXX  YYYY YYXX  ZZZZ YYYY  00ZZ ZZZZ
-     * Where bits in higher fields are also higher-order bits for the
-     * raw axis data (e.g. X-bits in b2 are high bits for X-data while
-     * Y-bits in b2 are low bits for Y-data).
-     * The upper 2 bits of b4 are unused and should always be 0.
-     *
-     * The raw axis data ranges from -512 to +511 with negative values
-     * encoded in two's complement.
-     */
-    input_state.axisX = ( ((input_report.b2 & 0x03) << 8) | (input_report.b1) );
-    if(input_state.axisX & 0x200) { input_state.axisX = -( (input_state.axisX ^ 0x3FF) + 1); }
-    input_state.axisY = ( ((input_report.b3 & 0x0f) << 6) | ((input_report.b2 & 0xfc) >> 2) );
-    if(input_state.axisY & 0x200) { input_state.axisY = -( (input_state.axisY ^ 0x3FF) + 1); }
-    input_state.axisZ = ( ((input_report.b4 & 0x3f) << 4) | ((input_report.b3 & 0xf0) >> 4) );
-    if(input_state.axisZ & 0x200) { input_state.axisZ = -( (input_state.axisZ ^ 0x3FF) + 1); }
-}
+        /** \internal
+         * Button State.
+         * The button state is contained in the b5 and b6 fields of the report.
+         * We combine those to a stratcom_button_word as follows:
+         *    0000 6666 5555 5555
+         * Where the upper nibble of b6 contains information on the slider state
+         * and is therefore zeroed out in the stratcom_button_word.
+         * Applying a mask from the stratcom_button enum on the stratcom_button_word gives the
+         * state of that button: 1 if the button is pressed; 0 otherwise
+         */
+        input_state.buttons = (((report.b6 & 0x0F) << 8) | report.b5);
 
-void stratcom_read_input(stratcom_device* device)
-{
-    hid_set_nonblocking(device->device, false);
-    InputReport input_report;
-    int const res = hid_read(device->device, &input_report.b0, sizeof(input_report));
-    if(res == sizeof(input_report)) {
-        evaluateInputReport(input_report, device->input_state);
-    } else {
-        /* error */
+        /** \internal
+         * Slider State.
+         * The Slider state is stored in the upper 4 bits of b6.
+         * The corresponding bit patterns are:
+         *  SLIDER1 = 0x30,
+         *  SLIDER2 = 0x20,
+         *  SLIDER3 = 0x10
+         */
+        if((report.b6 & 0x30) == 0x30) {
+            input_state.slider = STRATCOM_SLIDER_1;
+        } else {
+            input_state.slider = ((report.b6 & 0x20) ? STRATCOM_SLIDER_2 : STRATCOM_SLIDER_3);
+        }
+
+        /** \internal
+         * Axis State.
+         * The state of the 3 axes is saved in the b1, b2 and b3 fields.
+         * Each axis takes up 10 bits, allowing values from -512 to +511.
+         * The bit pattern is as follows:
+         *   {--b1---}  {--b2---}  {--b3---}  {--b4---}
+         *   XXXX XXXX  YYYY YYXX  ZZZZ YYYY  00ZZ ZZZZ
+         * Where bits in higher fields are also higher-order bits for the
+         * raw axis data (e.g. X-bits in b2 are high bits for X-data while
+         * Y-bits in b2 are low bits for Y-data).
+         * The upper 2 bits of b4 are unused and should always be 0.
+         *
+         * The raw axis data ranges from -512 to +511 with negative values
+         * encoded in two's complement.
+         */
+        input_state.axisX = ( ((report.b2 & 0x03) << 8) | (report.b1) );
+        if(input_state.axisX & 0x200) { input_state.axisX = -( (input_state.axisX ^ 0x3FF) + 1); }
+        input_state.axisY = ( ((report.b3 & 0x0f) << 6) | ((report.b2 & 0xfc) >> 2) );
+        if(input_state.axisY & 0x200) { input_state.axisY = -( (input_state.axisY ^ 0x3FF) + 1); }
+        input_state.axisZ = ( ((report.b4 & 0x3f) << 4) | ((report.b3 & 0xf0) >> 4) );
+        if(input_state.axisZ & 0x200) { input_state.axisZ = -( (input_state.axisZ ^ 0x3FF) + 1); }
+
+        return STRATCOM_RET_SUCCESS;
     }
 }
 
-int stratcom_read_input_with_timeout(stratcom_device* device, int timeout_milliseconds)
+stratcom_return stratcom_read_input(stratcom_device* device)
 {
     hid_set_nonblocking(device->device, false);
-    InputReport input_report;
-    int const res = hid_read_timeout(device->device, &input_report.b0, sizeof(input_report), timeout_milliseconds);
-    if(res == sizeof(input_report)) {
-        evaluateInputReport(input_report, device->input_state);
-        return 1;
+    input_report report;
+    int const res = hid_read(device->device, &report.b0, sizeof(report));
+    if(res == sizeof(report)) {
+        return evaluateInputReport(report, device->input_state);
+    } else {
+        return STRATCOM_RET_ERROR;
+    }
+}
+
+stratcom_return stratcom_read_input_with_timeout(stratcom_device* device, int timeout_milliseconds)
+{
+    hid_set_nonblocking(device->device, false);
+    input_report report;
+    int const res = hid_read_timeout(device->device, &report.b0, sizeof(report), timeout_milliseconds);
+    if(res == sizeof(report)) {
+        return evaluateInputReport(report, device->input_state);
     } else if(res != 0) {
-        /* error */
+        return STRATCOM_RET_ERROR;
     }
-    return 0;
+    return STRATCOM_RET_TIMEOUT;
 }
 
-int stratcom_read_input_non_blocking(stratcom_device* device)
+stratcom_return stratcom_read_input_non_blocking(stratcom_device* device)
 {
     hid_set_nonblocking(device->device, true);
-    InputReport input_report;
-    int const res = hid_read(device->device, &input_report.b0, sizeof(input_report));
-    if(res == sizeof(input_report)) {
-        evaluateInputReport(input_report, device->input_state);
-        return 1;
+    input_report report;
+    int const res = hid_read(device->device, &report.b0, sizeof(report));
+    if(res == sizeof(report)) {
+        return evaluateInputReport(report, device->input_state);
     } else if(res != 0) {
-        /* error */
+        return STRATCOM_RET_ERROR;
     }
-    return 0;
+    return STRATCOM_RET_TIMEOUT;
 }
 
 stratcom_input_state stratcom_get_input_state(stratcom_device* device)
