@@ -225,13 +225,13 @@ int stratcom_led_state_has_unflushed_changes(stratcom_device* device)
 }
 
 void stratcom_get_led_blink_interval(stratcom_device* device,
-                                     unsigned char* out_on_time, unsigned char* out_off_time)
+                                     uint8_t* out_on_time, uint8_t* out_off_time)
 {
     *out_on_time = device->blink_state.on_time;
     *out_off_time = device->blink_state.off_time;
 }
 
-stratcom_return stratcom_set_led_blink_interval(stratcom_device* device, unsigned char on_time, unsigned char off_time)
+stratcom_return stratcom_set_led_blink_interval(stratcom_device* device, uint8_t on_time, uint8_t off_time)
 {
     /** \internal
      * Blinking speed is set by sending a feature request of the following form:

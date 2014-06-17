@@ -289,6 +289,17 @@ extern "C" {
     /** @} */
 
     /** @name Button LEDs.
+     *
+     * Use these functions to interact with the LEDs on the device.
+     * Note that the stratcom_device object maintains a cached state of which LEDs are currently lit and what
+     * the blink intervals are. This is referred to as the <em>internal state</em>. This is in contrast to
+     * the <em>physical state</em> which is the actual state of the Strategic Commander device.
+     *
+     * It is possible for the internal and the physical state to diverge, for example if a function call fails
+     * to execute successfully or if an internal state change is not flushed to the device. The user can recover
+     * from this divergence by either attempting to write the internal state to the device, or by reading the
+     * physical state from the device, which will overwrite the internal state.
+     *
      * @{
      */
 
@@ -360,7 +371,7 @@ extern "C" {
      * @see stratcom_set_led_blink_interval(), stratcom_read_led_blink_intervals()
      */
     LIBSTRATCOM_API void stratcom_get_led_blink_interval(stratcom_device* device,
-                                                         unsigned char* out_on_time, unsigned char* out_off_time);
+                                                         uint8_t* out_on_time, uint8_t* out_off_time);
 
     /** Set the blink intervals for blinking LEDs.
      * This function will send a feature report to update the blink state on the physical device.
@@ -372,7 +383,7 @@ extern "C" {
      * @see stratcom_get_led_blink_interval(), stratcom_read_led_blink_intervals()
      */
     LIBSTRATCOM_API stratcom_return stratcom_set_led_blink_interval(stratcom_device* device,
-                                                                    unsigned char on_time, unsigned char off_time);
+                                                                    uint8_t on_time, uint8_t off_time);
 
     /** Read the button led state from the physical device.
      * Upon successful execution, this function will overwrite the internal led state with the values
@@ -401,6 +412,13 @@ extern "C" {
     /** @} */
 
     /** @name Device Input.
+     *
+     * Use these functions to obtain the input state of the device, such as which buttons are currently pressed.
+     * While these functions allow to query the current state of the device (that is, answer questions like <em>"Is
+     * Button 1 currently pressed?"</em>), they do not generate input events (that is, answer questions like <em>"Which
+     * Button has been pressed by the user?"</em>). If you are more interested in the second kind of question, be
+     * sure to check out the section on Input Events below.
+     *
      * @{
      */
 
@@ -421,24 +439,59 @@ extern "C" {
     /** @} */
 
     /** @name Iterating Button Identifiers.
+     *
+     * Use these functions if you need to iterate over all the buttons in a loop.
+     *
+     * \code{.c}
+        stratcom_button it;
+        for(it = stratcom_iterate_buttons_range_begin();
+            it != stratcom_iterate_buttons_range_end();
+            it = stratcom_iterate_buttons_range_increment(it))
+        {
+            ...
+        }
+     * \endcode
+     *
      * @{
      */
 
+    /** The beginning of the button range.
+     */
     LIBSTRATCOM_API stratcom_button stratcom_iterate_buttons_range_begin();
 
+    /** The end of the button range.
+     */
     LIBSTRATCOM_API stratcom_button stratcom_iterate_buttons_range_end();
 
+    /** Increment a button range iterator.
+     */
     LIBSTRATCOM_API stratcom_button stratcom_iterate_buttons_range_increment(stratcom_button button);
 
     /** @} */
 
     /** @name Input Events.
+     *
+     * Use these functions to generate a list of input events from two input states retrieved from
+     * stratcom_get_input_state().
+     * Instead of comparing input states manually, these functions generate a linked list of stratcom_input_event
+     * values, representing the changes between the two input states.
+     *
      * @{
      */
 
+    /** Generate a linked list of input events, describing the changes between two input states.
+     * @param[in] old_state An older input state.
+     * @param[in] new_state A newer input state.
+     * @return Pointer to a linked list of input events. This must be freed by calling stratcom_free_input_events().
+     * @see stratcom_free_input_events(), stratcom_get_input_state()
+     */
     LIBSTRATCOM_API stratcom_input_event* stratcom_create_input_events_from_states(stratcom_input_state* old_state,
                                                                                    stratcom_input_state* new_state);
 
+    /** Free a list of input events.
+     * @param[in] events An input event list obtained from stratcom_create_input_events_from_states().
+     * @see stratcom_create_input_events_from_states()
+     */
     LIBSTRATCOM_API void stratcom_free_input_events(stratcom_input_event* events);
 
     /** @} */
