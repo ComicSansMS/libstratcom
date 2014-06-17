@@ -3,6 +3,7 @@
 #include <hidapi.h>
 
 #include <memory>
+#include <new>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -139,9 +140,11 @@ stratcom_device* stratcom_open_device_on_path(char const* device_path)
 {
     auto dev = hid_open_path(device_path);
     if (dev) {
-        auto ret = new stratcom_device(dev);
-        stratcom_read_button_led_state(ret);
-        stratcom_read_led_blink_intervals(ret);
+        auto ret = new (std::nothrow) stratcom_device(dev);
+        if(ret) {
+            stratcom_read_button_led_state(ret);
+            stratcom_read_led_blink_intervals(ret);
+        }
         return ret;
     }
     return nullptr;
@@ -451,42 +454,44 @@ stratcom_input_event* stratcom_create_input_events_from_states(stratcom_input_st
 {
     stratcom_input_event* ret = nullptr;
 
-    if(old_state->slider != new_state->slider) {
-        auto ev = new stratcom_input_event;
-        ev->type = STRATCOM_INPUT_EVENT_SLIDER;
-        ev->desc.slider.status = new_state->slider;
-        ev->next = ret;
-        ret = ev;
-    }
-
-    auto evaluate_axis_states = [&ret](stratcom_axis_word old_val, stratcom_axis_word new_val, stratcom_axis axis) {
-        if(old_val != new_val) {
+    try {
+        if(old_state->slider != new_state->slider) {
             auto ev = new stratcom_input_event;
-            ev->type = STRATCOM_INPUT_EVENT_AXIS;
-            ev->desc.axis.axis = axis;
-            ev->desc.axis.status = new_val;
+            ev->type = STRATCOM_INPUT_EVENT_SLIDER;
+            ev->desc.slider.status = new_state->slider;
             ev->next = ret;
             ret = ev;
         }
-    };
-    evaluate_axis_states(old_state->axisX, new_state->axisX, STRATCOM_AXIS_X);
-    evaluate_axis_states(old_state->axisY, new_state->axisY, STRATCOM_AXIS_Y);
-    evaluate_axis_states(old_state->axisZ, new_state->axisZ, STRATCOM_AXIS_Z);
 
-    if(old_state->buttons != new_state->buttons) {
-        for(auto b = stratcom_iterate_buttons_range_begin(); b != stratcom_iterate_buttons_range_end();
-            b = stratcom_iterate_buttons_range_increment(b))
-        {
-            if((old_state->buttons & b) != (new_state->buttons & b)) {
+        auto evaluate_axis_states = [&ret](stratcom_axis_word old_val, stratcom_axis_word new_val, stratcom_axis axis) {
+            if(old_val != new_val) {
                 auto ev = new stratcom_input_event;
-                ev->type = STRATCOM_INPUT_EVENT_BUTTON;
-                ev->desc.button.button = b;
-                ev->desc.button.status = ((new_state->buttons & b) == 0) ? 0 : 1;
+                ev->type = STRATCOM_INPUT_EVENT_AXIS;
+                ev->desc.axis.axis = axis;
+                ev->desc.axis.status = new_val;
                 ev->next = ret;
                 ret = ev;
             }
+        };
+        evaluate_axis_states(old_state->axisX, new_state->axisX, STRATCOM_AXIS_X);
+        evaluate_axis_states(old_state->axisY, new_state->axisY, STRATCOM_AXIS_Y);
+        evaluate_axis_states(old_state->axisZ, new_state->axisZ, STRATCOM_AXIS_Z);
+
+        if(old_state->buttons != new_state->buttons) {
+            for(auto b = stratcom_iterate_buttons_range_begin(); b != stratcom_iterate_buttons_range_end();
+                b = stratcom_iterate_buttons_range_increment(b))
+            {
+                if((old_state->buttons & b) != (new_state->buttons & b)) {
+                    auto ev = new stratcom_input_event;
+                    ev->type = STRATCOM_INPUT_EVENT_BUTTON;
+                    ev->desc.button.button = b;
+                    ev->desc.button.status = ((new_state->buttons & b) == 0) ? 0 : 1;
+                    ev->next = ret;
+                    ret = ev;
+                }
+            }
         }
-    }
+    } catch (std::bad_alloc) { if(ret) { stratcom_free_input_events(ret); ret = nullptr; } }
 
     return ret;
 }
