@@ -1,3 +1,25 @@
+/******************************************************************************
+ * Copyright (c) 2010-2014 Andreas Weis <der_ghulbus@ghulbus-inc.de>
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *****************************************************************************/
+
 #include <stratcom.h>
 
 #include <hidapi.h>
@@ -377,7 +399,7 @@ stratcom_return stratcom_read_input_with_timeout(stratcom_device* device, int ti
     } else if(res != 0) {
         return STRATCOM_RET_ERROR;
     }
-    return STRATCOM_RET_TIMEOUT;
+    return STRATCOM_RET_NO_DATA;
 }
 
 stratcom_return stratcom_read_input_non_blocking(stratcom_device* device)
@@ -390,7 +412,7 @@ stratcom_return stratcom_read_input_non_blocking(stratcom_device* device)
     } else if(res != 0) {
         return STRATCOM_RET_ERROR;
     }
-    return STRATCOM_RET_TIMEOUT;
+    return STRATCOM_RET_NO_DATA;
 }
 
 stratcom_input_state stratcom_get_input_state(stratcom_device* device)
@@ -494,6 +516,17 @@ stratcom_input_event* stratcom_create_input_events_from_states(stratcom_input_st
     } catch (std::bad_alloc) { if(ret) { stratcom_free_input_events(ret); ret = nullptr; } }
 
     return ret;
+}
+
+stratcom_input_event* stratcom_append_input_events_from_states(stratcom_input_event* events,
+                                                               stratcom_input_state* old_state,
+                                                               stratcom_input_state* new_state)
+{
+    auto new_events = stratcom_create_input_events_from_states(old_state, new_state);
+    auto event_it = events;
+    while(event_it->next) { event_it = event_it->next; }
+    event_it->next = new_events;
+    return new_events;
 }
 
 void stratcom_free_input_events(stratcom_input_event* events)

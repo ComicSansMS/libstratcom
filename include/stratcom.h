@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright (c) 2010 Andreas Weis <der_ghulbus@ghulbus-inc.de>
+ * Copyright (c) 2010-2014 Andreas Weis <der_ghulbus@ghulbus-inc.de>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,7 +25,7 @@
  * libstratcom - 
  *  A Library for interacting with Microsoft SideWinder Strategic Commander
  *
- * @author Andreas Weis
+ * @author Andreas Weis <der_ghulbus@ghulbus-inc.de>
  *
  */
 #ifndef LIBSTRATCOM_INCLUDE_GUARD_STRATCOM_H_
@@ -232,7 +232,7 @@ extern "C" {
     typedef enum stratcom_return_ {
         STRATCOM_RET_SUCCESS = 0,                /**< The function completed successfully. */
         STRATCOM_RET_ERROR   = (-1),             /**< An error occured while executing. */
-        STRATCOM_RET_TIMEOUT = (-2)              /**< Timed out while waiting for input from the device. */
+        STRATCOM_RET_NO_DATA = (-2)              /**< A read operation returned without reading any new data */
     } stratcom_return;
 
     /** @name Initialization and Shutdown.
@@ -414,6 +414,15 @@ extern "C" {
     /** @name Device Input.
      *
      * Use these functions to obtain the input state of the device, such as which buttons are currently pressed.
+     * Input state is read from the Strategic Commander by reading input reports. Each action on the physical device
+     * (like pressing a button, or moving the axis or slider) will cause an input report to be generated. In case of
+     * no input, the read functions may block. Input reports that are not read immediately will be buffered by the
+     * HID layer and returned upon the next read. Thus, multiple read operations might be required to arrive at
+     * the latest input state.
+     *
+     * A return code of STRATCOM_RET_ERROR by one of these functions usually indicates that the physical device
+     * was unplugged by the user.
+     *
      * While these functions allow to query the current state of the device (that is, answer questions like <em>"Is
      * Button 1 currently pressed?"</em>), they do not generate input events (that is, answer questions like <em>"Which
      * Button has been pressed by the user?"</em>). If you are more interested in the second kind of question, be
@@ -422,18 +431,66 @@ extern "C" {
      * @{
      */
 
+    /** Wait for a new input report and read it from the physical device to update the internal input state.
+     * This function will block until the user performs an action on the Strategic Commander that generates an
+     * input event. Upon returning, the internal input state will have been updated according to that input report.
+     * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
+     * @return STRATCOM_RET_SUCCESS on success, STRATCOM_RET_ERROR on error.
+     * @see stratcom_read_input_with_timeout(), stratcom_read_input_non_blocking()
+     */
     LIBSTRATCOM_API stratcom_return stratcom_read_input(stratcom_device* device);
 
+    /** Wait for a new input report and read it from the physical device to update the internal input state.
+     * This function works exactly like stratcom_read_input(), except if no input report becomes available
+     * within a certain timeframe, it will return without reading anything.
+     * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
+     * @return STRATCOM_RET_SUCCESS on success, STRATCOM_RET_ERROR on error, STRATCOM_RET_NO_DATA on timeout.
+     * @see stratcom_read_input(), stratcom_read_input_non_blocking()
+     */
     LIBSTRATCOM_API stratcom_return stratcom_read_input_with_timeout(stratcom_device* device, int timeout_milliseconds);
 
+    /** Read a new input report from the physical device to update the internal input state, if available.
+     * Unlike stratcom_read_input(), this function will always return immediately. If an input report is available
+     * upon invocation, it will be read and the internal state will be updated accordingly. Otherwise this function
+     * does nothing.
+     * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
+     * @return STRATCOM_RET_SUCCESS if an input report was read, STRATCOM_RET_ERROR on error, STRATCOM_RET_NO_DATA if no
+     *         input report was available for reading.
+     * @see stratcom_read_input(), stratcom_read_input_with_timeout()
+     */
     LIBSTRATCOM_API stratcom_return stratcom_read_input_non_blocking(stratcom_device* device);
 
+    /** Retrieve a copy of the internal input state.
+     * The input state contains state information for all the buttons, axes and sliders of the device.
+     * This function does not read any data from the physical device. Use stratcom_read_input() for that.
+     * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
+     * @return A copy of the internal input state.
+     * @note Usually you do not want to inspect the input state directly. Instead, you can generate a
+     *       list of input events by calling stratcom_create_input_events_from_states(), which are more
+     *       convenient to process.
+     * @see stratcom_read_input(), stratcom_create_input_events_from_states()
+     */
     LIBSTRATCOM_API stratcom_input_state stratcom_get_input_state(stratcom_device* device);
 
+    /** Check the state of a single button in the internal input state.
+     * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
+     * @param[in] button The button which is to be queried.
+     * @return 1 if the button is marked as pressed in the internal input state, 0 otherwise.
+     * @see stratcom_read_input()
+     */
     LIBSTRATCOM_API int stratcom_is_button_pressed(stratcom_device* device, stratcom_button button);
 
+    /** Get the value of a particular axis in the internal input state.
+     * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
+     * @param[in] axis The axis which is to be queried.
+     * @return The current position for the axis stored in the internal input state.
+     */
     LIBSTRATCOM_API stratcom_axis_word stratcom_get_axis_value(stratcom_device* device, stratcom_axis axis);
 
+    /** Get the position of the slider in the internal input state.
+     * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
+     * @return The current position of the slider in the internal input state.
+     */
     LIBSTRATCOM_API stratcom_slider_state stratcom_get_slider_state(stratcom_device* device);
 
     /** @} */
@@ -486,6 +543,19 @@ extern "C" {
      * @see stratcom_free_input_events(), stratcom_get_input_state()
      */
     LIBSTRATCOM_API stratcom_input_event* stratcom_create_input_events_from_states(stratcom_input_state* old_state,
+                                                                                   stratcom_input_state* new_state);
+
+    /** Append input events created from two input states to an existing list.
+     * @param[in,out] events A non-empty list of input events,
+     *                       retrieved from stratcom_create_input_events_from_states().
+     * @param[in] old_state An older input state.
+     * @param[in] new_state A newer input state.
+     * @return Pointer to the first new element in the input list. You do not have to free those elements seperately.
+     *         Simply call stratcom_free_input_events() on the original events pointer to free the whole list.
+     * @see stratcom_create_input_events_from_states(), stratcom_free_input_events(), stratcom_get_input_state()
+     */
+    LIBSTRATCOM_API stratcom_input_event* stratcom_append_input_events_from_states(stratcom_input_event* events,
+                                                                                   stratcom_input_state* old_state,
                                                                                    stratcom_input_state* new_state);
 
     /** Free a list of input events.

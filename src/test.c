@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include <stratcom.h>
+#include <Windows.h>
 
 int main(void)
 {
@@ -42,12 +43,16 @@ int main(void)
                     }
                     stratcom_set_button_led_state(dev, led, new_led_state);
                 }
+                if(events_it->type == STRATCOM_INPUT_EVENT_BUTTON) {
+                    printf("Button state is %d  ", events_it->desc.button.status);
+                }
                 ++number_of_events;
                 events_it = events_it->next;
             }
             printf("%d input event(s).\n", number_of_events);
             stratcom_free_input_events(events);
             old_state = new_state;
+            Sleep(500);
         }
 
         stratcom_set_button_led_state(dev, STRATCOM_LEDBUTTON_ALL, STRATCOM_LED_OFF);
