@@ -69,7 +69,6 @@ install(TARGETS stratcom EXPORT libstratcomTargets
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
     INCLUDES DESTINATION include
-    CONFIGURATIONS Debug Release
 )
 install(FILES ${LIBSTRATCOM_HEADER_FILES} DESTINATION include)
 if(MSVC)
@@ -86,7 +85,7 @@ write_basic_package_version_file(
 # installation - build tree specific package config files
 export(EXPORT libstratcomTargets FILE ${CMAKE_BINARY_DIR}/libstratcomTargets.cmake)
 configure_file(${PROJECT_SOURCE_DIR}/libstratcomConfig.cmake.in
-    ${CMAKE_BINARY_DIR}/libstratComConfig.cmake
+    ${CMAKE_BINARY_DIR}/libstratcomConfig.cmake
     COPY_ONLY
 )
 
@@ -98,13 +97,11 @@ configure_package_config_file(${PROJECT_SOURCE_DIR}/libstratcomConfig.cmake.in
 install(EXPORT libstratcomTargets
     FILE libstratcomTargets.cmake
     DESTINATION "cmake"
-    CONFIGURATIONS Debug Release
 )
 install(FILES
-    ${CMAKE_BINARY_DIR}/cmake/libstratComConfig.cmake
+    ${CMAKE_BINARY_DIR}/cmake/libstratcomConfig.cmake
     ${CMAKE_BINARY_DIR}/cmake/libstratcomVersion.cmake
     DESTINATION "cmake"
-    CONFIGURATIONS Debug Release
 )
 
 # sample applications
