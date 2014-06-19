@@ -1,5 +1,6 @@
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <stratcom.h>
@@ -17,12 +18,15 @@ int main(void)
     } else {
         stratcom_input_state new_state, old_state;
         memset(&old_state, 0, sizeof(old_state));
-
+        printf("Press the + button on the Strategic Commander to quit.\n");
         while(!stratcom_is_button_pressed(dev, STRATCOM_BUTTON_PLUS))
         {
             int number_of_events;
             stratcom_input_event* events, * events_it;
-            stratcom_read_input(dev);
+            if(stratcom_read_input(dev) != STRATCOM_RET_SUCCESS) {
+                printf("Error: Device disconnected.\n");
+                exit(1);
+            }
             new_state = stratcom_get_input_state(dev);
             events = stratcom_create_input_events_from_states(&old_state, &new_state);
             number_of_events = 0;
