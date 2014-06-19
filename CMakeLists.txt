@@ -104,10 +104,6 @@ install(FILES
     DESTINATION "cmake"
 )
 
-# sample applications
-add_executable(tester src/test.c)
-target_link_libraries(tester stratcom)
-
 # documentation
 find_package(Doxygen)
 if(DOXYGEN_FOUND)
@@ -121,3 +117,9 @@ if(DOXYGEN_FOUND)
     )
     source_group("" FILES ${PROJECT_SOURCE_DIR}/Doxyfile.in)
 endif()
+
+option(BUILD_EXAMPLE_APPLICATIONS "Check this option to build the sample applications" OFF)
+if(BUILD_EXAMPLE_APPLICATIONS)
+    add_subdirectory(examples)
+endif()
+
