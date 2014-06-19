@@ -86,7 +86,7 @@ write_basic_package_version_file(
 export(EXPORT libstratcomTargets FILE ${CMAKE_BINARY_DIR}/libstratcomTargets.cmake)
 configure_file(${PROJECT_SOURCE_DIR}/libstratcomConfig.cmake.in
     ${CMAKE_BINARY_DIR}/libstratcomConfig.cmake
-    COPY_ONLY
+    COPYONLY
 )
 
 # installation - relocatable package config files
