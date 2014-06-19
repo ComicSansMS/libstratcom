@@ -444,6 +444,8 @@ extern "C" {
      * This function works exactly like stratcom_read_input(), except if no input report becomes available
      * within a certain timeframe, it will return without reading anything.
      * @param[in] device A device structure returned from stratcom_open_device() or stratcom_open_device_on_path().
+     * @param[in] timeout_milliseconds Time in milliseconds that the function will wait for an input report to become
+     *                                 available before returning.
      * @return STRATCOM_RET_SUCCESS on success, STRATCOM_RET_ERROR on error, STRATCOM_RET_NO_DATA on timeout.
      * @see stratcom_read_input(), stratcom_read_input_non_blocking()
      */
