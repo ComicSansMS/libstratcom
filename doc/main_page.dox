@@ -1,0 +1,56 @@
+/** @mainpage A cross-platform library for interfacing with the Microsoft SideWinder Strategic Commander
+SideWinder and SideWinder Strategic Commander are trademarks of <em>Microsoft Corporation</em>. <br/>
+
+\e libstratcom and its authors are not affiliated with Microsoft in any way.
+
+@section sec_usage Basic Usage
+
+Before calling any other library function, you should initialize the library by calling stratcom_init().
+
+\code{.c}
+stratcom_init();
+\endcode
+
+Use stratcom_open_device() to connect to the Strategic Commander. Note that no more than one application can be connected to the device at the same time. Upon successful execution, stratcom_open_device() will return a pointer to a \ref stratcom_device struct, which most library functions require as a first argument.
+
+\code
+stratcom_device* the_device = stratcom_open_device();
+\endcode
+
+Read the current state of axes and buttons from the device by calling stratcom_read_input():
+
+\code
+stratcom_read_input(the_device);
+if(stratcom_is_button_pressed(the_device, STRATCOM_BUTTON_1) {
+  printf("Button 1 is currently pressed.\n");
+}
+\endcode
+
+Switch LEDs on or off using stratcom_set_button_led_state():
+
+\code
+stratcom_set_button_led_state(the_device,
+                              STRATCOM_LEDBUTTON_1,
+                              STRATCOM_LED_ON);
+\endcode
+
+Remember to free the device and shutdown the library at the end:
+
+\code
+stratcom_close_device(the_device);
+stratcom_shutdown();
+\endcode
+
+
+Find a small collection of complete example programs in the \c examples directory of the source distribution.
+
+
+@section sec_license License
+
+\e libstratcom and its documentation are licensed under terms of the <b>MIT License/X11 license</b>.
+
+\e libstratcom uses \e HIDAPI as a dependency under terms of the <b>BSD license</b>.
+
+See the enclosed \c LICENSE.txt file for details. 
+
+*/
