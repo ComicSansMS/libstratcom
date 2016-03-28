@@ -2,12 +2,15 @@
 project(libstratcom-examples)
 cmake_minimum_required(VERSION 3.0)
 
-set(LIBSTRATCOM_PREFIX_PATH "" CACHE PATH "Set this to the installation directory of the libstratcom binaries")
+if(NOT TARGET stratcom)
+    # if we are not building as part of libstratcom, we have to find the libstratcom package first
+    set(LIBSTRATCOM_PREFIX_PATH "" CACHE PATH "Set this to the installation directory of the libstratcom binaries")
 
-if(LIBSTRATCOM_PREFIX_PATH)
-    list(APPEND CMAKE_PREFIX_PATH ${LIBSTRATCOM_PREFIX_PATH})
+    if(LIBSTRATCOM_PREFIX_PATH)
+        list(APPEND CMAKE_PREFIX_PATH ${LIBSTRATCOM_PREFIX_PATH})
+    endif()
+    find_package(libstratcom NO_MODULE REQUIRED)
 endif()
-find_package(libstratcom NO_MODULE REQUIRED)
 
 add_executable(led_demo led_demo.c common.h)
 target_link_libraries(led_demo stratcom)
