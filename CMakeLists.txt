@@ -120,6 +120,7 @@ endif()
 
 option(BUILD_EXAMPLE_APPLICATIONS "Check this option to build the sample applications" OFF)
 if(BUILD_EXAMPLE_APPLICATIONS)
+    list(APPEND CMAKE_PREFIX_PATH ${PROJECT_BINARY_DIR})
     add_subdirectory(examples)
     if(WIN32)
         add_custom_command(TARGET stratcom POST_BUILD 
