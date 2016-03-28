@@ -75,7 +75,7 @@ if(MSVC)
     install(FILES $<TARGET_FILE_DIR:stratcom>/stratcomd.pdb DESTINATION bin CONFIGURATIONS Debug)
     install(FILES LICENSE.txt DESTINATION ".")
 endif()
-include(CmakePackageConfigHelpers)
+include(CMakePackageConfigHelpers)
 write_basic_package_version_file(
     ${CMAKE_BINARY_DIR}/cmake/libstratcomVersion.cmake
     VERSION ${LIBSTRATCOM_VERSION}
