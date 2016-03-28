@@ -158,10 +158,10 @@ extern "C" {
      */
     typedef struct stratcom_input_state_ {
         stratcom_button_word  buttons;           /**< Combined state of all buttons. */
-        stratcom_slider_state slider;            /**< State of the slider. */
         stratcom_axis_word    axisX;             /**< X-axis state (-512: full left; 0: center; +511: full right). */
         stratcom_axis_word    axisY;             /**< Y-axis state (-512: full up;   0: center; +511: full down). */
         stratcom_axis_word    axisZ;             /**< Z-axis state (-512: full left; 0: center; +511: full right). */
+        stratcom_slider_state slider;            /**< State of the slider. */
     } stratcom_input_state;
 
     /** @} */
