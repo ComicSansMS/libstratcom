@@ -14,7 +14,7 @@ find_package(Git REQUIRED)
 include(ExternalProject)
 ExternalProject_Add(hidapi
     GIT_REPOSITORY https://github.com/signal11/hidapi.git
-    GIT_TAG hidapi-0.8.0-rc1
+    GIT_TAG b5b2e1779b6cd2edda3066bbbf0921a2d6b1c3c0
     UPDATE_COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/external/hidapi/CMakeLists.txt .
     BINARY_DIR ${HIDAPI_BINARY_DIR}
     INSTALL_COMMAND ""
