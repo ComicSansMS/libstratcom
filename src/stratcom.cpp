@@ -513,7 +513,7 @@ stratcom_input_event* stratcom_create_input_events_from_states(stratcom_input_st
                 }
             }
         }
-    } catch (std::bad_alloc) { if(ret) { stratcom_free_input_events(ret); ret = nullptr; } }
+    } catch (std::bad_alloc&) { if(ret) { stratcom_free_input_events(ret); ret = nullptr; } }
 
     return ret;
 }
