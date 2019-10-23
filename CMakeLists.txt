@@ -13,8 +13,8 @@ set(HIDAPI_BINARY_DIR ${PROJECT_BINARY_DIR}/hidapi_build)
 find_package(Git REQUIRED)
 include(ExternalProject)
 ExternalProject_Add(hidapi
-    GIT_REPOSITORY https://github.com/signal11/hidapi.git
-    GIT_TAG b5b2e1779b6cd2edda3066bbbf0921a2d6b1c3c0
+    GIT_REPOSITORY https://github.com/libusb/hidapi.git
+    GIT_TAG 7da5cc91fc0d2dbe4df4f08cd31f6ca1a262418f
     UPDATE_COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/external/hidapi/CMakeLists.txt .
     BINARY_DIR ${HIDAPI_BINARY_DIR}
     INSTALL_COMMAND ""
