@@ -542,6 +542,9 @@ extern "C" {
      * @param[in] old_state An older input state.
      * @param[in] new_state A newer input state.
      * @return Pointer to a linked list of input events. This must be freed by calling stratcom_free_input_events().
+     * @note You must ensure the two input states passed as arguments originate from two subsequent calls to
+     *       \c stratcom_read_input* . Otherwise the list of input events might be empty (indicated
+     *       by a \c NULL return value) or incomplete.
      * @see stratcom_free_input_events(), stratcom_get_input_state()
      */
     LIBSTRATCOM_API stratcom_input_event* stratcom_create_input_events_from_states(stratcom_input_state* old_state,
@@ -554,6 +557,8 @@ extern "C" {
      * @param[in] new_state A newer input state.
      * @return Pointer to the first new element in the input list. You do not have to free those elements seperately.
      *         Simply call stratcom_free_input_events() on the original events pointer to free the whole list.
+     * @note You must ensure the two input states passed as arguments originate from two subsequent calls to
+     *       \c stratcom_read_input* . Otherwise the list of input events might be incomplete.
      * @see stratcom_create_input_events_from_states(), stratcom_free_input_events(), stratcom_get_input_state()
      */
     LIBSTRATCOM_API stratcom_input_event* stratcom_append_input_events_from_states(stratcom_input_event* events,
